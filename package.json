@@ -1,12 +1,19 @@
 {
   "name": "hono-auth",
   "scripts": {
-    "dev": "bun run --hot src/index.ts"
+    "dev": "bun run --hot src/index.ts",
+    "db:migrate": "bun prisma migrate deploy"
   },
   "dependencies": {
+    "@hono/zod-validator": "^0.2.2",
+    "@prisma/client": "^5.19.1",
     "hono": "^4.5.11"
   },
   "devDependencies": {
-    "@types/bun": "latest"
+    "@faker-js/faker": "^9.0.0",
+    "@types/bcrypt": "^5.0.2",
+    "@types/bun": "latest",
+    "@types/ms": "^0.7.34",
+    "prisma": "^5.19.1"
   }
 }

@@ -1,0 +1,4 @@
+[test]
+
+# to set different thresholds for lines and functions
+coverageThreshold = { line = 0.7, function = 0.8, statement = 0.9 }
