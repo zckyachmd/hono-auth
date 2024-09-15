@@ -14,12 +14,26 @@ datasource db {
 }
 
 model User {
-  id        Int      @id @default(autoincrement())
-  name      String   @db.VarChar(100)
-  email     String   @unique @db.VarChar(128)
+  id        Int         @id @default(autoincrement())
+  name      String      @db.VarChar(100)
+  email     String      @unique @db.VarChar(128)
   password  String
-  createdAt DateTime @default(now())
-  updatedAt DateTime @updatedAt
+  createdAt DateTime    @default(now())
+  updatedAt DateTime    @updatedAt
+  tokens    UserToken[] @relation("UserTokens")
 
   @@map("users")
+}
+
+model UserToken {
+  id         Int       @id @default(autoincrement())
+  userId     Int
+  token      String
+  issuedAt   DateTime  @default(now())
+  expiresAt  DateTime
+  revoked    Boolean   @default(false)
+  user       User      @relation("UserTokens", fields: [userId], references: [id])
+
+  @@index([userId, token])
+  @@map("user_tokens")
 }

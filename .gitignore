@@ -143,3 +143,6 @@ dist
 # Prisma
 /prisma/migrations
 /prisma/dev.db
+
+# Bun
+bun.lockb
