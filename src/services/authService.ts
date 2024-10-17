@@ -1,8 +1,8 @@
 import { z } from "@hono/zod-openapi";
 import { registerSchema, loginSchema } from "@/schemas/authSchema";
-import * as jwt from "@/libs/jwt";
-import * as crypto from "@/libs/crypto";
+import { passwordHash, passwordVerify } from "@/libs/password";
 import db from "@/libs/db";
+import * as jwt from "@/libs/jwt";
 
 /**
  * Registers a new user.
@@ -12,49 +12,102 @@ import db from "@/libs/db";
  * @throws {Error} If the email is already in use.
  */
 export const register = async (data: z.infer<typeof registerSchema>) => {
-  const existingUser = await db.user.findUnique({
-    where: { email: data.email },
+  return await db.$transaction(async (prisma) => {
+    const existingUser = await prisma.user.findFirst({
+      where: {
+        OR: [{ email: data.email }, { username: data.username }],
+      },
+    });
+
+    if (existingUser) {
+      throw new Error("Email or Username already registered!");
+    }
+
+    let role = await prisma.role.findUnique({
+      where: { name: "USER" },
+      select: { id: true },
+    });
+
+    if (!role) {
+      role = await prisma.role.create({
+        data: { name: "USER" },
+      });
+    }
+
+    const hashedPassword = await passwordHash(data.password);
+    const user = await prisma.user.create({
+      data: {
+        name: data.name,
+        username: data.username,
+        email: data.email,
+        password: hashedPassword,
+        roleId: role.id,
+      },
+    });
+
+    return { name: user.name, email: user.email };
   });
-
-  if (existingUser) {
-    throw new Error("Email already registered!");
-  }
-
-  const hashedPassword = await crypto.hashValue(data.password);
-  const user = await db.user.create({
-    data: {
-      name: data.name,
-      email: data.email,
-      password: hashedPassword,
-    },
-  });
-
-  return { name: user.name, email: user.email };
 };
 
 /**
  * Logs in a user and returns JWT access and refresh tokens.
  *
- * @param data The login data (email and password).
+ * @param data The login data (email/username and password).
  * @returns The generated access and refresh tokens.
  * @throws {Error} If the credentials are invalid.
  */
 export const login = async (data: z.infer<typeof loginSchema>) => {
+  const { username, password: inputPassword } = loginSchema.parse(data);
+  const isEmail = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(username);
+
   const user = await db.user.findUnique({
-    where: { email: data.email },
+    where: isEmail ? { email: username } : { username: username },
   });
 
-  if (!user || !(await crypto.verifyValue(data.password, user.password))) {
-    throw new Error("Email or password is incorrect!");
+  if (!user || !(await passwordVerify(inputPassword, user.password))) {
+    throw new Error("Invalid login credentials");
   }
 
-  const userId = user.id.toString();
   const [accessToken, refreshToken] = await Promise.all([
-    jwt.createAccessToken(userId),
-    jwt.createRefreshToken(userId),
+    jwt.createAccessToken(user.id),
+    jwt.createRefreshToken(user.id),
   ]);
 
   return { accessToken, refreshToken };
+};
+
+/**
+ * Retrieves the profile of a user by ID.
+ *
+ * @param userId The ID of the user to retrieve.
+ * @returns The user profile.
+ * @throws {Error} If the user does not exist.
+ */
+export const profile = async (userId: string) => {
+  const user = await db.user.findUnique({
+    where: { id: userId },
+    select: {
+      name: true,
+      username: true,
+      email: true,
+      role: {
+        select: {
+          name: true,
+        },
+      },
+    },
+  });
+
+  if (!user) {
+    throw new Error("User not found");
+  }
+
+  return {
+    name: user.name,
+    username: user.username,
+    email: user.email,
+    role: user.role?.name || null,
+  };
 };
 
 /**
@@ -76,7 +129,7 @@ const processToken = async (
     throw new Error("Invalid or expired refresh token");
   }
 
-  const userId = parseInt(decodedToken.subject, 10);
+  const userId = decodedToken.subject;
 
   return await db.$transaction(async (prisma) => {
     const tokenRecords = await prisma.userToken.findMany({
@@ -89,7 +142,7 @@ const processToken = async (
 
     const validTokenRecord = await Promise.all(
       tokenRecords.map(async (tokenRecord) => {
-        const isValidToken = await crypto.verifyValue(
+        const isValidToken = await passwordVerify(
           refreshToken,
           tokenRecord.token
         );
@@ -98,7 +151,7 @@ const processToken = async (
     ).then((results) => results.find((record) => record !== null));
 
     if (!validTokenRecord) {
-      throw new Error("Refresh token is invalid or already revoked");
+      throw new Error("Refresh token is invalid or already revoked!");
     }
 
     await prisma.userToken.update({
@@ -107,7 +160,17 @@ const processToken = async (
     });
 
     await prisma.userToken.deleteMany({
-      where: { userId, revoked: true },
+      where: {
+        userId,
+        OR: [
+          {
+            expiresAt: { lt: new Date() },
+          },
+          {
+            revoked: true,
+          },
+        ],
+      },
     });
 
     if (action === "REGENERATE") {

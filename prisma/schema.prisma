@@ -14,25 +14,45 @@ datasource db {
 }
 
 model User {
-  id        Int         @id @default(autoincrement())
-  name      String      @db.VarChar(100)
-  email     String      @unique @db.VarChar(128)
+  id        String   @id @default(cuid())
+  name      String   @db.VarChar(128)
+  email     String   @unique @db.VarChar(128)
+  username  String   @unique @db.VarChar(32)
   password  String
-  createdAt DateTime    @default(now())
-  updatedAt DateTime    @updatedAt
-  tokens    UserToken[] @relation("UserTokens")
+  roleId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
 
+  role   Role        @relation(fields: [roleId], references: [id])
+  tokens UserToken[] @relation("UserTokens")
+
+  @@index([roleId])
   @@map("users")
 }
 
+model Role {
+  id        String   @id @default(cuid())
+  name      String   @unique @db.VarChar(64)
+  parentId  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  parent   Role?  @relation("RoleHierarchy", fields: [parentId], references: [id])
+  children Role[] @relation("RoleHierarchy")
+  users    User[]
+
+  @@map("roles")
+}
+
 model UserToken {
-  id         Int       @id @default(autoincrement())
-  userId     Int
-  token      String
-  issuedAt   DateTime  @default(now())
-  expiresAt  DateTime
-  revoked    Boolean   @default(false)
-  user       User      @relation("UserTokens", fields: [userId], references: [id])
+  id        String   @id @default(cuid())
+  userId    String
+  token     String
+  issuedAt  DateTime @default(now())
+  expiresAt DateTime
+  revoked   Boolean  @default(false)
+
+  user User @relation("UserTokens", fields: [userId], references: [id])
 
   @@index([userId, token])
   @@map("user_tokens")

@@ -9,7 +9,7 @@ const bcrypt = new Bcrypt({ cost: saltRounds });
  * @param password The password to hash.
  * @returns A Promise that resolves to the hashed password.
  */
-export const hashValue = async (password: string): Promise<string> => {
+export const passwordHash = async (password: string): Promise<string> => {
   try {
     return await bcrypt.hash(password);
   } catch (error) {
@@ -24,7 +24,7 @@ export const hashValue = async (password: string): Promise<string> => {
  * @param hashedValue The hashed password to compare against.
  * @returns A Promise that resolves to a boolean indicating whether the password matches the hashed password.
  */
-export const verifyValue = async (
+export const passwordVerify = async (
   value: string,
   hashedValue: string
 ): Promise<boolean> => {

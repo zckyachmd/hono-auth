@@ -1,55 +1,81 @@
+import { Context } from "hono";
 import { createMiddleware } from "hono/factory";
 import { validateToken } from "@/libs/jwt";
 import db from "@/libs/db";
 
 /**
- * Auth middleware that validates a JWT token in the Authorization header
+ * A middleware that authenticates the request using a JWT token in the Authorization header.
  *
- * If the token is invalid or missing, a 401 response is returned.
+ * The middleware extracts the token from the header and verifies it using the `validateToken` function.
+ * If the token is valid, it retrieves the user using the `db.user.findUnique` method and sets the `userId`
+ * and `userRole` properties on the context object.
  *
- * If the token is valid, the user ID is extracted and used to find the user in
- * the database. If the user is not found, a 404 response is returned.
+ * If the token is invalid or the user is not found, it returns an error response with a 401 or 404 status
+ * code, respectively.
  *
- * If the user is found, the user object is stored in the request context and the
- * next middleware is called.
- *
- * If the token is invalid for any other reason, a 401 response is returned with
- * a generic error message.
+ * @param c The context object.
+ * @param next The next middleware or route handler.
  */
-const authMiddleware = () => {
-  return createMiddleware(async (c, next) => {
-    const authHeader = c.req.header("Authorization");
-    const token = authHeader?.split(" ")[1] || null;
-    if (!token) {
-      return c.json({ message: "Authorization token is required!" }, 401);
+const authMiddleware = createMiddleware(async (c: Context, next) => {
+  const token = extractToken(c.req.header("Authorization"));
+
+  if (!token) {
+    return respondWithError(c, "Authorization token is required!", 401);
+  }
+
+  try {
+    const decodedToken = await validateToken(token);
+    const userId = decodedToken?.subject;
+
+    if (!userId || typeof userId !== "string" || userId.length === 0) {
+      return respondWithError(c, "Invalid user ID in token!", 401);
     }
 
-    try {
-      const decodedToken = await validateToken(token);
-      if (!decodedToken || !decodedToken.subject) {
-        return c.json({ message: "Unauthorized!" }, 401);
-      }
+    const user = await db.user.findUnique({
+      where: { id: userId },
+      select: {
+        id: true,
+        role: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    });
 
-      const userId = parseInt(decodedToken.subject, 10);
-      if (isNaN(userId)) {
-        return c.json({ message: "Invalid user ID in token!" }, 401);
-      }
-
-      const user = await db.user.findUnique({
-        where: { id: userId },
-        select: { id: true },
-      });
-      if (!user) {
-        return c.json({ message: "User not found!" }, 404);
-      }
-
-      c.set("user", user);
-
-      await next();
-    } catch (error) {
-      return c.json({ message: "Authentication failed" }, 401);
+    if (!user) {
+      return respondWithError(c, "User not found!", 404);
     }
-  });
+
+    c.set("userId", user.id);
+    c.set("userRole", user.role.name);
+
+    await next();
+  } catch (error) {
+    return respondWithError(c, "Authentication failed", 401);
+  }
+});
+
+/**
+ * Extracts a token from an Authorization header.
+ *
+ * @param authHeader The Authorization header to extract the token from.
+ * @returns The extracted token, or null if the header is missing or invalid.
+ */
+const extractToken = (authHeader: string | undefined): string | null => {
+  return authHeader ? authHeader.split(" ")[1] : null;
+};
+
+/**
+ * Responds with an error to the client.
+ *
+ * @param c The Hono Context object.
+ * @param message The error message to send to the client.
+ * @param status The HTTP status code to respond with.
+ * @returns The response object.
+ */
+const respondWithError = (c: Context, message: string, status: number) => {
+  return c.json({ message }, { status });
 };
 
 export default authMiddleware;

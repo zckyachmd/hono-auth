@@ -1,20 +1,24 @@
 import type { Context } from "hono";
 import { OpenAPIHono } from "@hono/zod-openapi";
-import { login, register, regenToken, logout } from "@/services/authService";
-import { registerSchema, loginSchema } from "@/schemas/authSchema";
-import { getCookie, setCookie } from "hono/cookie";
+import * as authService from "@/services/authService";
+import * as authSchema from "@/schemas/authSchema";
+import authMiddleware from "@/middlewares/authMiddleware";
+import roleMiddleware from "@/middlewares/roleMiddleware";
 
 const authRoute = new OpenAPIHono();
 const API_TAGS = ["Auth"];
 
-const setTokenCookie = (c: Context, refreshToken: string) => {
-  setCookie(c, "refreshToken", refreshToken, {
-    httpOnly: true,
-    secure: true,
-    sameSite: "Strict",
-    maxAge: 60 * 60 * 24 * 30,
-  });
-};
+// Register Component
+authRoute.openAPIRegistry.registerComponent(
+  "securitySchemes",
+  "AuthorizationBearer",
+  {
+    type: "http",
+    scheme: "bearer",
+    in: "header",
+    description: "Bearer token",
+  }
+);
 
 // Register Route
 authRoute.openapi(
@@ -28,7 +32,7 @@ authRoute.openapi(
       body: {
         content: {
           "application/json": {
-            schema: registerSchema,
+            schema: authSchema.registerSchema,
           },
         },
       },
@@ -47,13 +51,11 @@ authRoute.openapi(
     const body = await c.req.json();
 
     try {
-      const user = await register(body);
-      return c.json({ status: "success", data: user }, 201);
+      const user = await authService.register(body);
+
+      return c.json({ data: user }, 201);
     } catch (error: Error | any) {
-      return c.json(
-        { status: "failed", error: error.message || "Registration failed!" },
-        400
-      );
+      return c.json({ error: error.message || "Registration failed!" }, 400);
     }
   }
 );
@@ -69,7 +71,7 @@ authRoute.openapi(
       body: {
         content: {
           "application/json": {
-            schema: loginSchema,
+            schema: authSchema.loginSchema,
           },
         },
       },
@@ -88,14 +90,42 @@ authRoute.openapi(
     const body = await c.req.json();
 
     try {
-      const token = await login(body);
-      setTokenCookie(c, token.refreshToken);
-      return c.json({ status: "success", data: token.accessToken }, 200);
+      const token = await authService.login(body);
+
+      return c.json({ token }, 200);
     } catch (error: Error | any) {
-      return c.json(
-        { status: "failed", error: error.message || "Login failed!" },
-        401
-      );
+      return c.json({ error: error.message || "Login failed!" }, 401);
+    }
+  }
+);
+
+// Auth Me
+authRoute.openapi(
+  {
+    method: "get",
+    path: "/me",
+    summary: "Get user information",
+    description: "Get user information including user ID, username, and role.",
+    security: [{ AuthorizationBearer: [] }],
+    middleware: [authMiddleware, roleMiddleware({ roles: ["USER"] })],
+    responses: {
+      200: {
+        description: "User information successfully retrieved",
+      },
+      401: {
+        description: "Refresh token is missing or invalid",
+      },
+    },
+    tags: API_TAGS,
+  },
+  async (c: Context) => {
+    try {
+      const userId = c.get("userId") as string;
+      const user = await authService.profile(userId);
+
+      return c.json({ user }, 200);
+    } catch (error: Error | any) {
+      return c.json({ error: error.message || "Failed to get user!" }, 401);
     }
   }
 );
@@ -118,17 +148,21 @@ authRoute.openapi(
     tags: API_TAGS,
   },
   async (c: Context) => {
-    const refreshToken = getCookie(c, "refreshToken");
+    const { refreshToken } = await c.req.json();
+
     if (!refreshToken) {
-      return c.json({ message: "Refresh token is required" }, 401);
+      return c.json({ error: "Refresh token is required!" }, 401);
     }
 
     try {
-      const result = await regenToken(refreshToken);
-      setTokenCookie(c, result.refreshToken);
-      return c.json({ status: "success", data: result }, 200);
+      const token = await authService.regenToken(refreshToken);
+
+      return c.json({ token }, 200);
     } catch (error: Error | any) {
-      return c.json({ error: "Failed to refresh token" }, 401);
+      return c.json(
+        { error: error.message || "Failed to refresh token!" },
+        401
+      );
     }
   }
 );
@@ -154,22 +188,18 @@ authRoute.openapi(
     tags: API_TAGS,
   },
   async (c: Context) => {
-    const refreshToken = getCookie(c, "refreshToken");
+    const { refreshToken } = await c.req.json();
+
     if (!refreshToken) {
-      return c.json({ message: "Refresh token is required" }, 401);
+      return c.json({ error: "Refresh token is required!" }, 401);
     }
 
     try {
-      await logout(refreshToken);
-      setCookie(c, "refreshToken", "", {
-        httpOnly: true,
-        secure: true,
-        sameSite: "Strict",
-        maxAge: 0,
-      });
-      return c.json({ message: "Logout successful" }, 200);
+      await authService.logout(refreshToken);
+
+      return c.json({ message: "Logout successful!" }, 200);
     } catch (error: Error | any) {
-      return c.json({ message: "Failed to logout" }, 500);
+      return c.json({ error: error.message || "Failed to logout!" }, 500);
     }
   }
 );

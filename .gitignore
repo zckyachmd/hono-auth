@@ -7,16 +7,6 @@ yarn-error.log*
 lerna-debug.log*
 .pnpm-debug.log*
 
-# IDE/editor settings
-.git/
-.vscode/
-.vscode-test
-.idea/
-
-# OS-specific files
-.DS_Store
-Thumbs.db
-
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
@@ -51,7 +41,6 @@ build/Release
 # Dependency directories
 node_modules/
 jspm_packages/
-bun.lockb
 
 # Snowpack dependency directory (https://snowpack.dev/)
 web_modules/
@@ -139,10 +128,3 @@ dist
 .yarn/build-state.yml
 .yarn/install-state.gz
 .pnp.*
-
-# Prisma
-/prisma/migrations
-/prisma/dev.db
-
-# Bun
-bun.lockb

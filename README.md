@@ -5,15 +5,16 @@
 ## Features
 
 - User Authentication: Includes user registration, login, logout, and token refresh.
-- Prisma ORM: Simplified database operations.
 - Zod Validation: Schema validation for secure data handling.
 - Swagger UI: Auto-generated API docs for easy testing and integration.
+- Dynamic Role Access Control: Enhanced role management allowing for flexible access control based on user roles and hierarchy.
+- Role Hierarchy Filtering: Implemented filtering logic to ensure only appropriate roles are included in access checks, improving security and clarity.
 
 ## Tech Stack (Framework & Libraries)
 
 - Hono.js (Bun & TypeScript)
 - Prisma ORM (PostgreSQL)
-- Swagger UI (OpenAPI)
+- Swagger UI (Scalar)
 - Zod (Data Validation)
 
 ## Endpoints
@@ -24,6 +25,7 @@
 | /auth/login         | POST   | Log in a user        |
 | /auth/refresh-token | POST   | Refresh access token |
 | /auth/logout        | POST   | Log out a user       |
+| /auth/me            | GET    | Get user information |
 
 ## Setup and Usage
 
@@ -32,11 +34,11 @@
   
 1. Clone the repository and install dependencies:
 
-   ```bash
-     git clone https://github.com/zckyachmd/hono-auth.git
-     cd hono-auth
-     bun install
-   ```
+```bash
+  git clone https://github.com/zckyachmd/hono-auth.git
+  cd hono-auth
+  bun install
+```
 
 2. Create a `.env` file in the root directory:
 
